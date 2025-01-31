@@ -57,11 +57,28 @@ class CourseController
         return $participantsGrille;
     }
 
-
     public function getResultsData(array $resultats): array
     {
         return array_slice($resultats, 0, 3); // Retourne les 3 premiers
     }
+
+    // Nouvelle fonction pour obtenir les données des participants pour le graphique
+    public function getParticipantsDataForGame(): array
+    {
+        $participantsData = [];
+        foreach ($this->participants as $participant) {
+            $participantsData[] = [
+                'nom' => $participant->getNom(),
+                'classe' => (new \ReflectionClass($participant))->getShortName(),
+                'type' => $participant->getType(),
+                'demiGrandAxe' => $participant->getDemiGrandAxe(),
+                'vitesse' => $participant->getVitesse(),
+                // On pourrait ajouter d'autres données si nécessaire pour le graphique
+            ];
+        }
+        return $participantsData;
+    }
+
 
     public function getParticipants(): array {
         return $this->participants;

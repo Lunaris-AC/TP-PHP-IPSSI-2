@@ -8,10 +8,11 @@ mkdir -p models
 mkdir -p utils
 mkdir -p views
 mkdir -p public/css
+mkdir -p public/js
 
 # Création des fichiers et ajout du contenu
 
-# utils/RandomStringGenerator.php (CORRIGÉ !)
+# utils/RandomStringGenerator.php
 cat > utils/RandomStringGenerator.php <<EOL
 <?php
 
@@ -25,8 +26,8 @@ class RandomStringGenerator
         \$charactersLength = strlen(\$characters);
         \$randomString = '';
         for (\$i = 0; \$i < \$length; \$i++) {
-            \$randomIndex = rand(0, \$charactersLength - 1); // Générer un index aléatoire
-            \$randomString .= \$characters[\$randomIndex];      // Utiliser l'index aléatoire pour choisir un caractère
+            \$randomIndex = rand(0, \$charactersLength - 1);
+            \$randomString .= \$characters[\$randomIndex];
         }
         return \$randomString;
     }
@@ -319,11 +320,28 @@ class CourseController
         return \$participantsGrille;
     }
 
-
     public function getResultsData(array \$resultats): array
     {
         return array_slice(\$resultats, 0, 3); // Retourne les 3 premiers
     }
+
+    // Nouvelle fonction pour obtenir les données des participants pour le graphique
+    public function getParticipantsDataForGame(): array
+    {
+        \$participantsData = [];
+        foreach (\$this->participants as \$participant) {
+            \$participantsData[] = [
+                'nom' => \$participant->getNom(),
+                'classe' => (new \ReflectionClass(\$participant))->getShortName(),
+                'type' => \$participant->getType(),
+                'demiGrandAxe' => \$participant->getDemiGrandAxe(),
+                'vitesse' => \$participant->getVitesse(),
+                // On pourrait ajouter d'autres données si nécessaire pour le graphique
+            ];
+        }
+        return \$participantsData;
+    }
+
 
     public function getParticipants(): array {
         return \$this->participants;
@@ -348,9 +366,22 @@ class StartGridDecorator
         \$this->courseController = \$courseController;
     }
 
-    public function display(): array
+    public function display(): string // Retourne du HTML
     {
-        return \$this->courseController->getStartGridData(); // Retourne les données, ne fait plus d'affichage direct
+        \$participants = \$this->courseController->getStartGridData();
+        \$output = "<section class='mb-8'>
+            <h2 class='text-2xl font-bold mb-2'>Grille de Départ</h2>
+            <ul class='list-decimal pl-5'>";
+        foreach (\$participants as \$index => \$participant) {
+            \$classeNom = (new \ReflectionClass(\$participant))->getShortName();
+            \$type = \$participant->getType();
+            \$determinant = in_array(\$classeNom, ['Asteroide', 'Comete']) ? "un" : "une";
+            \$output .= "<li class='mb-1'>
+                Le " . (\$index + 1) . "ème participant <span class='font-semibold'>" . htmlspecialchars(\$participant->getNom()) . "</span> est \$determinant " . htmlspecialchars(\$classeNom) . " de type " . htmlspecialchars(\$type) . ".
+            </li>";
+        }
+        \$output .= "</ul></section>";
+        return \$output;
     }
 }
 EOL
@@ -374,9 +405,31 @@ class ResultsDecorator
         \$this->results = \$results;
     }
 
-    public function display(): array
+    public function display(): string // Retourne du HTML
     {
-        return \$this->courseController->getResultsData(\$this->results); // Retourne les données
+        \$top3Resultats = \$this->courseController->getResultsData(\$this->results);
+        \$output = "<section>
+            <h2 class='text-2xl font-bold mb-2'>Résultats de la Course</h2>
+            <ol class='list-decimal pl-5'>";
+        \$podiumNoms = ["vainqueur", "lauréat de la médaille d'argent", "troisième candidat sur le podium"];
+        \$podiumDeterminants = ["le", "le", "le"];
+        \$podiumPronoms = ["grand", "talentueux", "vénérable"];
+
+        foreach (\$top3Resultats as \$index => \$resultat) {
+            \$participant = \$resultat['participant'];
+            \$tours = round(\$resultat['tours'], 2);
+            \$classeNom = (new \ReflectionClass(\$participant))->getShortName();
+            \$type = \$participant->getType();
+            \$determinant = in_array(\$classeNom, ['Asteroide', 'Comete']) ? "un" : "une";
+            \$pronom = \$podiumPronoms[\$index];
+
+            \$output .= "<li class='mb-2'>
+                " . \$podiumDeterminants[\$index] . " <span class='font-semibold'>" . \$podiumNoms[\$index] . "</span> est \$determinant " . htmlspecialchars(\$classeNom) . " de type " . htmlspecialchars(\$type) . ",
+                <span class='font-semibold'>" . htmlspecialchars(\$participant->getNom()) . "</span>, il a effectué <span class='font-semibold'>" . \$tours . "</span> tours d'orbite.
+            </li>";
+        }
+        \$output .= "</ol></section>";
+        return \$output;
     }
 }
 EOL
@@ -388,12 +441,12 @@ cat > views/header.php <<EOL
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Course Galactique</title>
+    <title>Course Galactique V2</title>
     <link href="./public/css/style.css" rel="stylesheet">
 </head>
 <body class="bg-gray-100 font-sans">
     <div class="container mx-auto p-4">
-        <h1 class="text-3xl font-bold text-center mb-4">La Course Galactique</h1>
+        <h1 class="text-3xl font-bold text-center mb-4">La Course Galactique V2</h1>
 EOL
 
 # views/footer.php
@@ -403,49 +456,25 @@ cat > views/footer.php <<EOL
 </html>
 EOL
 
-# views/start_grid.php
-cat > views/start_grid.php <<EOL
+# views/game.php
+cat > views/game.php <<EOL
 <section class="mb-8">
-    <h2 class="text-2xl font-bold mb-2">Grille de Départ</h2>
-    <ul class="list-decimal pl-5">
-    <?php foreach (\$participants as \$index => \$participant): ?>
-        <?php
-            \$classeNom = (new \ReflectionClass(\$participant))->getShortName();
-            \$type = \$participant->getType();
-            \$determinant = in_array(\$classeNom, ['Asteroide', 'Comete']) ? "un" : "une";
-        ?>
-        <li class="mb-1">
-            Le <?= \$index + 1 ?>ème participant <span class="font-semibold"><?= htmlspecialchars(\$participant->getNom()) ?></span> est <?= \$determinant ?> <?= htmlspecialchars(\$classeNom) ?> de type <?= htmlspecialchars(\$type) ?>.
-        </li>
-    <?php endforeach; ?>
-    </ul>
+    <h2 class="text-2xl font-bold mb-4 text-center">Aperçu Graphique de la Course</h2>
+    <div class="relative">
+        <canvas id="gameCanvas" width="800" height="600" class="border border-gray-300 bg-gray-200"></canvas>
+        <div id="raceInfoText" class="absolute top-2 left-2 p-2 bg-white bg-opacity-75 rounded shadow-md">
+            <!-- Informations textuelles sur la course seront affichées ici par JavaScript -->
+        </div>
+    </div>
 </section>
-EOL
 
-# views/results.php
-cat > views/results.php <<EOL
-<section>
-    <h2 class="text-2xl font-bold mb-2">Résultats de la Course</h2>
-    <ol class="list-decimal pl-5">
-    <?php foreach (\$resultats as \$index => \$resultat): ?>
-        <?php
-            \$participant = \$resultat['participant'];
-            \$tours = round(\$resultat['tours'], 2);
-            \$classeNom = (new \ReflectionClass(\$participant))->getShortName();
-            \$type = \$participant->getType();
-            \$podiumNoms = ["vainqueur", "lauréat de la médaille d'argent", "troisième candidat sur le podium"];
-            \$podiumDeterminants = ["le", "le", "le"];
-            \$podiumPronoms = ["grand", "talentueux", "vénérable"];
-            \$determinant = in_array(\$classeNom, ['Asteroide', 'Comete']) ? "un" : "une";
-            \$pronom = \$podiumPronoms[\$index];
-        ?>
-        <li class="mb-2">
-            <?= \$podiumDeterminants[\$index] ?> <span class="font-semibold"><?= \$podiumNoms[\$index] ?></span> est <?= \$determinant ?> <?= htmlspecialchars(\$classeNom) ?> de type <?= htmlspecialchars(\$type) ?>,
-            <span class="font-semibold"><?= htmlspecialchars(\$participant->getNom()) ?></span>, il a effectué <span class="font-semibold"><?= \$tours ?></span> tours d'orbite.
-        </li>
-    <?php endforeach; ?>
-    </ol>
-</section>
+<script src="./public/js/game.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const participantsData = <?php echo json_encode(\$participantsDataForGame); ?>; // Passer les données PHP à JavaScript
+        initGame(participantsData); // Initialiser le jeu graphique avec les données
+    });
+</script>
 EOL
 
 # index.php
@@ -460,39 +489,109 @@ require_once __DIR__ . '/models/Comete.php';
 require_once __DIR__ . '/models/PlaneteNaine.php';
 require_once __DIR__ . '/factories/CelestialBodyFactory.php';
 require_once __DIR__ . '/controllers/CourseController.php';
-require_once __DIR__ . '/decorators/StartGridDecorator.php'; // Peut être supprimé
-require_once __DIR__ . '/decorators/ResultsDecorator.php';  // Peut être supprimé
+require_once __DIR__ . '/decorators/StartGridDecorator.php';
+require_once __DIR__ . '/decorators/ResultsDecorator.php';
 
 use GalacticRace\Controllers\CourseController;
-use GalacticRace\Decorators\StartGridDecorator; // Peut être supprimé
-use GalacticRace\Decorators\ResultsDecorator;  // Peut être supprimé
+use GalacticRace\Decorators\StartGridDecorator;
+use GalacticRace\Decorators\ResultsDecorator;
 
 // Initialisation de la course
 \$courseController = new CourseController();
 
 // Récupération des données pour la grille de départ
-//\$startGridDecorator = new StartGridDecorator(\$courseController); // Plus nécessaire, on appelle directement le controller
-//\$participantsGrille = \$startGridDecorator->display();
-\$participants = \$courseController->getStartGridData(); // VARIABLE RENOMMÉE ICI !
+\$startGridDecorator = new StartGridDecorator(\$courseController);
+\$startGridHTML = \$startGridDecorator->display(); // Récupérer le HTML formaté
 
 // Déroulement de la course et récupération des résultats
 \$resultatsCourse = \$courseController->runCourse();
 
 // Récupération des données pour les résultats
-//\$resultsDecorator = new ResultsDecorator(\$courseController, \$resultatsCourse); // Plus nécessaire, on appelle directement le controller
-//\$top3Resultats = \$resultsDecorator->display();
-\$top3Resultats = \$courseController->getResultsData(\$resultatsCourse);
+\$resultsDecorator = new ResultsDecorator(\$courseController, \$resultatsCourse);
+\$resultsHTML = \$resultsDecorator->display(); // Récupérer le HTML formaté
 
+// Récupération des données pour le jeu graphique
+\$participantsDataForGame = \$courseController->getParticipantsDataForGame();
 
 // Inclusion des vues
 require_once __DIR__ . '/views/header.php';
-require_once __DIR__ . '/views/start_grid.php';
 
-// On passe directement \$top3Resultats car getResultsData retourne déjà les 3 premiers
-\$resultats = \$top3Resultats;
-require_once __DIR__ . '/views/results.php';
+echo \$startGridHTML; // Affichage de la grille de départ textuelle
+
+require_once __DIR__ . '/views/game.php'; // Affichage de la partie graphique du jeu
+
+echo \$resultsHTML; // Affichage des résultats textuels
+
 require_once __DIR__ . '/views/footer.php';
 EOL
+
+# public/js/game.js
+cat > public/js/game.js <<EOL
+function initGame(participantsData) {
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const raceInfoTextDiv = document.getElementById('raceInfoText');
+
+    const sunRadius = 50;
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+
+    const orbitScale = 50; // Pixels par million de km pour le demiGrandAxe
+
+    function drawOrbit(demiGrandAxe) {
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, demiGrandAxe * orbitScale, 0, 2 * Math.PI);
+        ctx.strokeStyle = 'rgba(100, 100, 100, 0.3)'; // Orbites discrètes
+        ctx.stroke();
+    }
+
+    function drawCelestialBody(angle, demiGrandAxe, color, nom, classe, type) {
+        const x = centerX + Math.cos(angle) * demiGrandAxe * orbitScale;
+        const y = centerY + Math.sin(angle) * demiGrandAxe * orbitScale;
+
+        ctx.beginPath();
+        ctx.arc(x, y, 8, 0, 2 * Math.PI); // Taille fixe pour l'instant
+        ctx.fillStyle = color;
+        ctx.fill();
+
+        // Afficher le nom (optionnel, peut être trop chargé)
+        // ctx.fillStyle = 'black';
+        // ctx.font = '10px Arial';
+        // ctx.fillText(nom, x + 10, y + 4);
+    }
+
+    function updateRaceInfo(frame) {
+        raceInfoTextDiv.innerHTML = `Frame: \${frame}`; // Placeholder pour des infos plus riches
+    }
+
+
+    function animate(frame = 0) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Soleil au centre
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, sunRadius, 0, 2 * Math.PI);
+        ctx.fillStyle = 'yellow';
+        ctx.fill();
+
+        updateRaceInfo(frame);
+
+        participantsData.forEach((participant, index) => {
+            drawOrbit(participant.demiGrandAxe); // Dessiner l'orbite pour chaque participant
+            // Angle basé sur la vitesse et le temps (frame) - Simplifié pour l'instant
+            const angleSpeedFactor = 0.0001; // Ajuster pour la vitesse d'animation
+            const angle = frame * participant.vitesse * angleSpeedFactor * (index + 1); // Vitesse relative et décalée
+            const colors = ['blue', 'red', 'green', 'orange', 'purple', 'cyan', 'magenta', 'lime', 'teal', 'brown']; // Palette de couleurs
+            drawCelestialBody(angle, participant.demiGrandAxe, colors[index % colors.length], participant.nom, participant.classe, participant.type);
+        });
+
+        requestAnimationFrame(() => animate(frame + 1)); // Animation en boucle
+    }
+
+    animate(); // Démarrer l'animation
+}
+EOL
+
 
 # author.txt
 cat > author.txt <<EOL
@@ -524,9 +623,9 @@ EOL
 # package.json
 cat > package.json <<EOL
 {
-  "name": "galactic-race",
+  "name": "galactic-race-v2",
   "version": "1.0.0",
-  "description": "",
+  "description": "Galactic Race Version 2 with Graphics",
   "main": "index.php",
   "scripts": {
     "build-css": "tailwindcss -i ./public/css/input.css -o ./public/css/style.css --watch"
@@ -549,7 +648,7 @@ cat > public/css/input.css <<EOL
 @tailwind utilities;
 EOL
 
-echo "Projet Galactic Race créé avec succès !"
+echo "Projet Galactic Race V2 créé avec succès !"
 echo "N'oubliez pas de remplacer 'votre_nom votre_prenom' dans author.txt par vos informations."
 echo "Pour installer les dépendances Node.js et construire les CSS Tailwind, exécutez:"
 echo "npm install && npm run build-css"

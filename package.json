@@ -1,7 +1,7 @@
 {
-  "name": "galactic-race",
+  "name": "galactic-race-v2",
   "version": "1.0.0",
-  "description": "",
+  "description": "Galactic Race Version 2 with Graphics",
   "main": "index.php",
   "scripts": {
     "build-css": "tailwindcss -i ./public/css/input.css -o ./public/css/style.css --watch"
